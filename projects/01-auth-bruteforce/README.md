@@ -27,9 +27,10 @@ Common pivots:
 **Purpose:** If a single source generates many 4625 events in a short window, alert.
 
 ```spl
-index=wineventlog sourcetype=WinEventLog:Security EventCode=4625
-| eval src=coalesce(Source_Network_Address, IpAddress, src_ip, WorkstationName)
+index=main sourcetype="WinEventLog:Security" EventCode=4625
+| eval src=coalesce(Source_Network_Address, IpAddress, src_ip, WorkstationName, ComputerName)
 | eval user=coalesce(Account_Name, TargetUserName)
+| where src!="::1" AND src!="-"
 | bin _time span=5m
 | stats count AS fails dc(user) AS unique_users values(user) AS users by _time src
 | where fails >= 10
@@ -39,9 +40,10 @@ index=wineventlog sourcetype=WinEventLog:Security EventCode=4625
 
 **Purpose:** focus on remote/network logons that are more likely to be RDP/SMB-related.
 ```spl
-index=wineventlog sourcetype=WinEventLog:Security EventCode=4625
-| eval src=coalesce(Source_Network_Address, IpAddress, src_ip, WorkstationName)
+index=main sourcetype="WinEventLog:Security" EventCode=4625
+| eval src=coalesce(Source_Network_Address, IpAddress, src_ip, WorkstationName, ComputerName)
 | eval user=coalesce(Account_Name, TargetUserName)
+| rex field=_raw "Logon\s+Type:\s+(?<LogonType>\d+)"
 | search LogonType IN (3,10)
 | stats count AS fails values(LogonType) AS logon_types values(user) AS users by src
 | where fails >= 10
@@ -50,17 +52,17 @@ index=wineventlog sourcetype=WinEventLog:Security EventCode=4625
 
 ## Detection 3 — “Success after failures” (higher confidence)
 
-**Purpose:** flag when a 4624 successful logon happens after repeated 4625 failures for the same user/source.
+**Purpose:** Correlate successful logons (4624) that occur after repeated failures (4625) for the same user..
 
 ```spl
-index=wineventlog sourcetype=WinEventLog:Security (EventCode=4625 OR EventCode=4624)
-| eval src=coalesce(Source_Network_Address, IpAddress, src_ip, WorkstationName)
+index=main sourcetype="WinEventLog:Security" (EventCode=4624 OR EventCode=4625)
 | eval user=coalesce(Account_Name, TargetUserName)
-| sort 0 user src _time
-| streamstats count(eval(EventCode=4625)) AS prior_fails by user src
-| where EventCode=4624 AND prior_fails >= 5
-| table _time user src prior_fails
-| sort -prior_fails
+| where user="testuser"
+| sort 0 _time
+| streamstats count(eval(EventCode=4625)) AS prior_failures
+| where EventCode=4624 AND prior_failures >= 5
+| table _time user prior_failures
+| sort -prior_failures
 ```
 
 ## Validation steps (what I did to prove it worked)
