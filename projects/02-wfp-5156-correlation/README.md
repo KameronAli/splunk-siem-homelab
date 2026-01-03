@@ -38,20 +38,22 @@ index=main sourcetype="WinEventLog:Security" EventCode=5156 Destination_Port=445
 
 ```spl
 (
-  index=main sourcetype="WinEventLog:Security" EventCode=5156 Destination_Port IN (3389,445)
-  | eval service=if(Destination_Port==3389,"RDP","SMB")
-  | bin _time span=5m
-  | stats count AS net_events values(service) AS services by _time Destination_Address
-)
-| join type=left _time Destination_Address
-[
-  search index=main sourcetype="WinEventLog:Security" EventCode=4625
-  | bin _time span=5m
-  | stats count AS auth_fails by _time
-]
-| where net_events > 0 AND auth_fails >= 5
-| table _time Destination_Address services net_events auth_fails
-| sort -auth_fails
+index=main sourcetype="WinEventLog:Security" (EventCode=5156 OR EventCode=4625)
+| eval dest=Destination_Address
+| eval dest_port=Destination_Port
+| eval service=case(dest_port==3389,"RDP", dest_port==445,"SMB", true(), null())
+| where (EventCode=5156 AND dest_port IN (3389,445)) OR EventCode=4625
+| bin _time span=5m
+| stats
+    count(eval(EventCode=4625)) AS auth_fails
+    count(eval(EventCode=5156 AND dest_port==3389)) AS rdp_net
+    count(eval(EventCode=5156 AND dest_port==445)) AS smb_net
+    values(service) AS services
+    values(dest) AS destinations
+  by _time
+| where auth_fails >= 5 AND (rdp_net > 0 OR smb_net > 0)
+| table _time auth_fails rdp_net smb_net services destinations
+| sort -auth_fails,,
 ```
 
 ## Validation steps
@@ -65,3 +67,15 @@ Captured evidence screenshots for each detection.
 
 T1021 — Remote Services (RDP/SMB)
 T1110 — Brute Force (failed logons)
+
+## Evidence (Screenshots)
+
+**Detection 1 — 5156 RDP (3389)**
+![5156 RDP 3389](https://github.com/KameronHuggins/splunk-siem-homelab/blob/main/projects/02-wfp-5156-correlation/screenshots/5156-rdp-3389.png)
+
+**Detection 2 — 5156 SMB (445)**
+![5156 SMB 445](https://github.com/KameronHuggins/splunk-siem-homelab/blob/main/projects/02-wfp-5156-correlation/screenshots/5156-smb-445.png)
+
+**Detection 3 — Correlation (5156 + 4625)**
+![5156 + 4625 correlation](https://github.com/KameronHuggins/splunk-siem-homelab/blob/main/projects/02-wfp-5156-correlation/screenshots/5156-4625-correlation.png)
+
