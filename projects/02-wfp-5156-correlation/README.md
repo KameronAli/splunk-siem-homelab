@@ -1,7 +1,7 @@
 # Project 02 — Windows Filtering Platform Detection (5156) + Auth Correlation
 
 ## Objective
-Use **Windows Filtering Platform** telemetry (**Event ID 5156**) to detect network connections to sensitive services and correlate them with authentication failures (**4625**) for higher-confidence alerting.
+Used **Windows Filtering Platform** telemetry (**Event ID 5156**) to detect network connections to sensitive services and correlate them with authentication failures (**4625**) for higher-confidence alerting.
 
 ## Lab Setup
 - **Ubuntu**: Splunk Enterprise
